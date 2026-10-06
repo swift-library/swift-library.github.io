@@ -1,0 +1,48 @@
+{
+  "organization": "swift-library",
+  "site_repository": "swift-library.github.io",
+  "site_url": "https://swift-library.github.io/",
+  "organization_logo": "/assets/organization.png",
+  "groups": [
+    {
+      "id": "packages",
+      "name": "Packages",
+      "projects": [
+        {"repository": "swift-benchmark", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-codex", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-data-writable", "logo_path": "Docs/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-semver", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-gyb", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "swift-package"},
+        {"repository": "swift-userdefault", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-redux", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-pdf", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-appstoreconnect", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-json-schema", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"}
+      ]
+    },
+    {
+      "id": "tools",
+      "name": "Tools",
+      "projects": [
+        {"repository": "swift-sh", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "homebrew"},
+        {"repository": "homebrew-tap", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "tap"}
+      ]
+    },
+    {
+      "id": "templates-and-skills",
+      "name": "Templates and skills",
+      "projects": [
+        {"repository": "swift-package-template", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"},
+        {"repository": "skills", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"}
+      ]
+    },
+    {
+      "id": "standards",
+      "name": "Standards",
+      "projects": [
+        {"repository": ".github", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"},
+        {"repository": "swift-library.github.io", "logo_url": "https://raw.githubusercontent.com/swift-library/.github/master/profile/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"}
+      ]
+    }
+  ]
+}

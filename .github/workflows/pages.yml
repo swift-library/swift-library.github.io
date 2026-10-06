@@ -1,0 +1,91 @@
+name: Pages
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  policy:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    permissions:
+      contents: read
+    uses: swift-library/.github/.github/workflows/policy.yml@7badcc53166c6afcb265b39c789b8240d9a30233
+    with:
+      allow-terms: |
+        Codex
+        Cursor
+
+  build:
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: '26.6'
+      - name: Check pipeline
+        run: python3 -m unittest discover -s Tests -v
+      - name: Build site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: Scripts/build-site
+      - name: Check site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: Scripts/check-site
+      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: _site
+
+  result:
+    needs: [policy, build]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful validation
+        env:
+          POLICY: ${{ needs.policy.result }}
+          BUILD: ${{ needs.build.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          test "$BUILD" = success
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then
+            test "$POLICY" = success
+          else
+            test "$POLICY" = skipped
+          fi
+
+  deploy:
+    needs: [build, result]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

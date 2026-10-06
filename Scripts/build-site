@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 WITH Swift-exception
+"""Build the catalog and hosted documentation with Python's standard library."""
+
+import argparse
+import ast
+import hashlib
+from html import escape
+import json
+import os
+from pathlib import Path
+import shutil
+from string import Template
+import subprocess
+import sys
+
+from site_support import (
+    GitHub, ROOT, SiteError, configuration, contributor_names, latest_release, latest_tag,
+    projects, readme_url, write_contributors, write_json,
+)
+
+from site_docc import (
+    PIPELINE_SOURCE as DOCC_PIPELINE_SOURCE, add_identity, archive_source,
+    design_colors, identity_records, merged_identity,
+)
+
+SCRIPT_SOURCE = Path(__file__).read_text()
+
+
+def command(arguments, cwd=None, capture=False):
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    result = subprocess.run(arguments, cwd=cwd, env=environment, text=True,
+                            stdout=subprocess.PIPE if capture else None,
+                            check=False)
+    if result.returncode:
+        raise SiteError(f"{arguments[0]} {arguments[1]} exited {result.returncode}")
+    return result.stdout.strip() if capture else None
+
+
+def render(name, **values):
+    return Template((ROOT / "templates" / name).read_text()).substitute(values)
+
+
+def library_targets(manifest, selection):
+    names = []
+    for product in manifest["products"]:
+        if "library" in product["type"]:
+            for target in product["targets"]:
+                if target not in names:
+                    names.append(target)
+    if selection != "library-products":
+        if not isinstance(selection, list) or not set(selection) <= set(names):
+            raise SiteError("Documentation targets must be public library targets")
+        names = selection
+    if not names:
+        raise SiteError("Package has no documentation targets")
+    return names
+
+
+def build_documentation(config, project, tag, cache, output, toolchain, jobs, color, icon):
+    repo = project["repository"]
+    fingerprint = hashlib.sha256(
+        (tag["commit"]["sha"] + toolchain + json.dumps(project["documentation"], sort_keys=True)
+         + PIPELINE_SOURCE + DOCC_PIPELINE_SOURCE + color).encode() + icon
+    ).hexdigest()[:24]
+    work = cache / "docs" / repo / fingerprint
+    published = work / "published"
+    result_path = work / "result.json"
+    destination = output / repo
+    if result_path.is_file() and published.is_dir():
+        result = json.loads(result_path.read_text())
+        actual_identity = identity_records(published, result["modules"], len(result["modules"]) > 1, repo)
+        if actual_identity != result.get("identity"):
+            raise SiteError(f"{repo}: cached documentation identity differs from its receipt")
+        shutil.copytree(published, destination)
+        print(f"{repo}: reused documentation for {tag['name']}", flush=True)
+        return result
+
+    work.mkdir(parents=True, exist_ok=True)
+    revision = tag["commit"]["sha"]
+    with archive_source(config["organization"], repo, revision, cache) as source:
+        manifest_bytes = (source / "Package.swift").read_bytes()
+        manifest = json.loads(command(["swift", "package", "dump-package"], cwd=source, capture=True))
+        modules = library_targets(manifest, project["documentation"]["targets"])
+        compiler_key = hashlib.sha256(toolchain.encode()).hexdigest()[:16]
+        scratch = cache / "swift" / repo / tag["commit"]["sha"] / compiler_key
+        print(f"{repo}: extracting {len(modules)} modules at {tag['name']}", flush=True)
+        swift_options = ["--build-system", "native", "--disable-index-store", "-Xswiftc", "-gnone",
+                         "--scratch-path", str(scratch)]
+        if jobs is not None:
+            swift_options += ["--jobs", str(jobs)]
+        # SwiftPM's symbol extraction includes generated test-runner modules.
+        command(["swift", "build", *swift_options, "--build-tests"], cwd=source)
+        command(["swift", "package", *swift_options, "dump-symbol-graph",
+                 "--minimum-access-level", "public"], cwd=source)
+        graph_directories = [path for path in scratch.glob("*/symbolgraph") if path.is_dir()]
+        if not graph_directories:
+            graph_directories = [path for path in scratch.glob("*/*/symbolgraph") if path.is_dir()]
+        if len(graph_directories) != 1:
+            raise SiteError(f"{repo}: expected one symbol graph directory, got {len(graph_directories)}")
+        all_graphs = list(graph_directories[0].glob("*.symbols.json"))
+        module_graphs = {}
+        for path in all_graphs:
+            module = json.loads(path.read_text())["module"]["name"]
+            module_graphs.setdefault(module, []).append(path)
+        target_definitions = {target["name"]: target for target in manifest["targets"]}
+        archives = []
+        for module in modules:
+            graphs = module_graphs.get(module, [])
+            if not graphs:
+                raise SiteError(f"{repo}: missing symbol graph for {module}")
+            symbol_directory = work / "symbols" / module
+            if symbol_directory.exists():
+                shutil.rmtree(symbol_directory)
+            symbol_directory.mkdir(parents=True)
+            for path in graphs:
+                shutil.copy2(path, symbol_directory / path.name)
+            target_directory = source / (target_definitions[module].get("path") or f"Sources/{module}")
+            catalogs = sorted(target_directory.glob("*.docc"))
+            if len(catalogs) > 1:
+                raise SiteError(f"{repo}/{module}: multiple catalogs")
+            archive = work / f"{module}.doccarchive"
+            if archive.exists():
+                shutil.rmtree(archive)
+            catalog = catalogs[0] if catalogs else target_directory / (module + ".docc")
+            add_identity(catalog, module, color, icon)
+            arguments = ["xcrun", "docc", "convert", str(catalog)]
+            arguments += [
+                "--additional-symbol-graph-dir", str(symbol_directory),
+                "--output-path", str(archive), "--no-transform-for-static-hosting",
+                "--fallback-display-name", module,
+                "--fallback-bundle-identifier", f"org.{config['organization']}.{repo}.{module}",
+                "--fallback-default-module-kind", "Library",
+                "--checkout-path", str(source), "--source-service", "github",
+                "--source-service-base-url", f"https://github.com/{config['organization']}/{repo}/blob/{tag['name']}",
+            ]
+            command(arguments)
+            archives.append(archive)
+        archive = archives[0]
+        if len(archives) > 1:
+            archive = work / f"{repo}.doccarchive"
+            if archive.exists():
+                shutil.rmtree(archive)
+            command(["xcrun", "docc", "merge", *map(str, archives),
+                     "--output-path", str(archive), "--synthesized-landing-page-name", repo])
+        if len(archives) > 1:
+            merged_identity(archive, repo, color, icon)
+        if published.exists():
+            shutil.rmtree(published)
+        command(["xcrun", "docc", "process-archive", "transform-for-static-hosting", str(archive),
+                 "--hosting-base-path", repo, "--output-path", str(published)])
+        landing = "documentation/index.html" if len(modules) > 1 else f"documentation/{modules[0].lower()}/index.html"
+        if not (published / landing).is_file():
+            raise SiteError(f"{repo}: missing documentation landing page {landing}")
+        if (source / "Package.swift").read_bytes() != manifest_bytes:
+            raise SiteError(f"{repo}: package manifest changed during the build")
+        result = {"tag": tag["name"], "revision": revision, "modules": modules,
+                  "url": f"/{repo}/{landing.removesuffix('index.html')}",
+                  "identity": identity_records(published, modules, len(modules) > 1, repo)}
+        write_json(result_path, result)
+        shutil.copytree(published, destination)
+        return result
+
+
+def install_snippet(config, project, tag):
+    repo = project["repository"]
+    url = f"https://github.com/{config['organization']}/{repo}.git"
+    kind = project["install"]
+    if kind == "swift-package" and tag:
+        return f'.package(url: "{url}", .upToNextMinor(from: "{tag["name"].removeprefix("v")}"))'
+    if kind == "homebrew":
+        return f"brew install {config['organization']}/tap/{repo}"
+    if kind == "tap":
+        return f"brew tap {config['organization']}/tap"
+    return f"git clone {url}"
+
+
+def build(args):
+    config = configuration()
+    api = GitHub()
+    repositories = api.public_repositories(config["organization"])
+    output = args.output.resolve()
+    cache = args.cache_dir.resolve()
+    if output == ROOT or ROOT.is_relative_to(output) or cache.is_relative_to(output):
+        raise SiteError("Output must not contain the repository or build cache")
+    if output.exists():
+        shutil.rmtree(output)
+    output.mkdir(parents=True)
+    cache.mkdir(parents=True, exist_ok=True)
+    toolchain = command(["swift", "--version"], capture=True) + command(["xcodebuild", "-version"], capture=True)
+    design = (args.design_file.read_text() if args.design_file else
+              api.text_file(config["organization"], ".github", "DESIGN.md", repositories[".github"]["default_branch"]))
+    colors = design_colors(design)
+    catalog = []
+    skipped = []
+    groups_html = []
+    for group in config["groups"]:
+        cards = []
+        for project in group["projects"]:
+            name = project["repository"]
+            if name not in repositories:
+                skipped.append(name)
+                print(f"{name}: not public; skipped", flush=True)
+                continue
+            repo = repositories[name]
+            tag = latest_tag(api, config["organization"], name)
+            release = latest_release(api, config["organization"], name)
+            documentation = None
+            if project["documentation"]["kind"] == "docc" and release:
+                if not tag:
+                    raise SiteError(f"{name}: release has no tag")
+                if name not in colors:
+                    raise SiteError(f"{name}: missing icon in DESIGN.md")
+                icon_path = str(Path(project["logo_path"]).with_suffix(".png"))
+                icon = ((args.identity_root / name / icon_path).read_bytes() if args.identity_root else
+                        api.bytes_file(config["organization"], name, icon_path, repo["default_branch"]))
+                documentation = build_documentation(config, project, tag, cache, output, toolchain, args.jobs,
+                                                    colors[name], icon)
+                (output / name / "index.html").write_text(render(
+                    "documentation-home.html", repository=escape(name),
+                    docs_url=escape(documentation["url"], quote=True)))
+            elif project["documentation"]["kind"] == "docc":
+                print(f"{name}: unreleased; linking README", flush=True)
+            docs_url = documentation["url"] if documentation else readme_url(api, config["organization"], repo)
+            logo = project.get("logo_url") or (
+                f"https://raw.githubusercontent.com/{config['organization']}/{name}/{repo['default_branch']}/{project['logo_path']}"
+            )
+            cards.append(render(
+                "card.html", repository=escape(name, quote=True), title=escape(name),
+                logo=escape(logo, quote=True), description=escape(repo.get("description") or ""),
+                version=escape(tag["name"] if tag else "Unreleased"),
+                docs_url=escape(docs_url, quote=True), github_url=escape(repo["html_url"], quote=True),
+                install_snippet=escape(install_snippet(config, project, tag)),
+            ))
+            catalog.append({"repository": name, "group": group["id"],
+                            "description": repo.get("description"), "tag": tag["name"] if tag else None,
+                            "release": release["tag_name"] if release else None,
+                            "documentation": documentation, "docs_url": docs_url})
+        if cards:
+            groups_html.append(render("group.html", group_id=escape(group["id"], quote=True),
+                                      group_name=escape(group["name"]), cards="\n".join(cards)))
+    names = contributor_names(api, config["organization"], repositories)
+    write_contributors(ROOT / "CONTRIBUTORS.txt", names)
+    shutil.copy2(ROOT / "CONTRIBUTORS.txt", output / "CONTRIBUTORS.txt")
+    shutil.copy2(ROOT / "LICENSE.txt", output / "LICENSE.txt")
+    assets = ROOT / "assets"
+    if assets.is_dir():
+        shutil.copytree(assets, output / "assets")
+    pages = {
+        "index.html": ("swift-library", render("home.html", groups="\n".join(groups_html),
+                                               organization_logo=escape(config["organization_logo"], quote=True))),
+        "contributing/index.html": ("Contributing · swift-library", render("contributing.html")),
+        "404.html": ("Page not found · swift-library", render("404.html")),
+    }
+    for path, (title, content) in pages.items():
+        destination = output / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(render("page.html", title=escape(title), content=content))
+    write_json(output / "build-manifest.json", {
+        "organization": config["organization"], "site_url": config["site_url"],
+        "projects": catalog, "skipped": skipped, "contributors": len(names),
+    })
+    print(f"Built {len(catalog)} catalog entries and {sum(p['documentation'] is not None for p in catalog)} documentation sites", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "_site")
+    parser.add_argument("--cache-dir", type=Path, default=ROOT / ".site-cache")
+    parser.add_argument("--jobs", type=int, help="Maximum concurrent Swift build jobs")
+    parser.add_argument("--design-file", type=Path, help="Use a local organization DESIGN.md for publication preview")
+    parser.add_argument("--identity-root", type=Path, help="Read repository logos from local checkouts for publication preview")
+    args = parser.parse_args()
+    if args.jobs is not None and args.jobs < 1:
+        parser.error("--jobs must be positive")
+    build(args)
+
+
+# Catalog metadata and templates do not affect the compiled documentation archives.
+PIPELINE_SOURCE = "\n".join(
+    ast.get_source_segment(SCRIPT_SOURCE, node)
+    for node in ast.parse(SCRIPT_SOURCE).body
+    if isinstance(node, ast.FunctionDef) and node.name in {"command", "library_targets", "build_documentation"}
+)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (SiteError, OSError) as error:
+        print(f"build-site: {error}", file=sys.stderr)
+        sys.exit(1)

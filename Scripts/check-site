@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 WITH Swift-exception
+"""Check every internal link and compare the catalog with GitHub's public repos."""
+
+import argparse
+import json
+from pathlib import Path
+import re
+import sys
+
+from site_checks import Links
+from site_docc import identity_records
+from site_support import GitHub, ROOT, SiteError, configuration, projects
+
+
+def check(args):
+    config = configuration()
+    output = args.output.resolve()
+    required = ["index.html", "404.html", "contributing/index.html", "LICENSE.txt", "CONTRIBUTORS.txt", "build-manifest.json"]
+    for path in required:
+        if not (output / path).is_file():
+            raise SiteError(f"Missing required output: {path}")
+    links = Links(output, config["site_url"])
+    errors = links.scan()
+    manifest = json.loads((output / "build-manifest.json").read_text())
+    local = args.local
+    api = None if local else GitHub()
+    if local:
+        skipped = manifest.get("skipped", [])
+        if len(skipped) != len(set(skipped)):
+            errors.append("Build manifest repeats skipped repositories")
+        configured_names = {p["repository"] for p in projects(config)}
+        if not set(skipped) <= configured_names:
+            errors.append("Build manifest skips repositories outside configuration")
+        expected = configured_names - set(skipped)
+        repositories = {name: {} for name in expected}
+    else:
+        repositories = api.public_repositories(config["organization"])
+        expected = set(repositories)
+    actual = [entry["repository"] for entry in manifest["projects"]]
+    cards = links.html(output / "index.html").repositories
+    configured = [p["repository"] for p in projects(config) if p["repository"] in repositories]
+    if len(actual) != len(set(actual)) or set(actual) != expected:
+        errors.append(f"Catalog mismatch: missing {sorted(expected - set(actual))}, extra {sorted(set(actual) - expected)}")
+    if actual != cards or actual != configured:
+        errors.append("Catalog cards, build metadata, and configured order differ")
+    if not local:
+        for name in expected:
+            if (repositories[name].get("license") or {}).get("spdx_id") != "Apache-2.0":
+                errors.append(f"{name}: GitHub does not report Apache-2.0")
+    for entry in manifest["projects"]:
+        repo = repositories.get(entry["repository"])
+        if not local and repo and entry["description"] != repo.get("description"):
+            errors.append(f"{entry['repository']}: About description changed; rebuild")
+        project = next(p for p in projects(config) if p["repository"] == entry["repository"])
+        if project["documentation"]["kind"] == "docc" and entry["release"] and not entry["documentation"]:
+            errors.append(f"{entry['repository']}: released package is missing hosted documentation")
+        if entry["documentation"]:
+            links.check(entry["documentation"]["url"], output / "index.html")
+            if not entry["documentation"]["modules"]:
+                errors.append(f"{entry['repository']}: documentation has no modules")
+            try:
+                docs = entry["documentation"]
+                actual_identity = identity_records(output / entry["repository"], docs["modules"],
+                                                   len(docs["modules"]) > 1, entry["repository"])
+                if not docs.get("identity") or docs["identity"] != actual_identity:
+                    errors.append(f"{entry['repository']}: documentation identity differs from its build receipt")
+            except (SiteError, OSError, ValueError, KeyError) as error:
+                errors.append(f"{entry['repository']}: {error}")
+    contributing = links.html(output / "contributing/index.html")
+    if "contributing-code" not in contributing.anchors:
+        errors.append("Missing contributing-code anchor")
+    policy = f"https://github.com/{config['organization']}/.github/blob/master/VERSIONING.md"
+    if policy not in contributing.links:
+        errors.append("Contributing page does not link the shared versioning policy")
+    license_text = (ROOT / "LICENSE.txt").read_text()
+    if "Apache License" not in license_text or "Version 2.0" not in license_text:
+        errors.append("Source license must contain Apache-2.0")
+    if (output / "LICENSE.txt").read_bytes() != (ROOT / "LICENSE.txt").read_bytes():
+        errors.append("Published license differs from the repository license")
+    names = (output / "CONTRIBUTORS.txt").read_text().splitlines()
+    if not names or len(names) != len(set(names)) or any(re.search(r"@|\[bot\]|\bbot\b", name, re.I) for name in names):
+        errors.append("Contributor names must be unique and contain no emails or bots")
+
+    if not local:
+        profile_repo = repositories[".github"]
+        profile = api.text_file(config["organization"], ".github", "profile/README.md", profile_repo["default_branch"])
+        for section in re.split(r"(?m)^### ", profile)[1:]:
+            heading, _, body = section.partition("\n")
+            names = list(dict.fromkeys(re.findall(r"https://github\.com/" + re.escape(config["organization"]) + r"/([A-Za-z0-9_.-]+)", body)))
+            names = [name for name in names if name in expected]
+            matching = [group for group in config["groups"] if group["name"] == heading.strip()]
+            if len(matching) != 1:
+                errors.append(f"Catalog does not contain profile group {heading.strip()}")
+            elif [p["repository"] for p in matching[0]["projects"] if p["repository"] in names] != names:
+                errors.append(f"Catalog order differs from profile group {heading.strip()}")
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        raise SiteError(f"{len(errors)} check(s) failed")
+    mode = "local catalog entries" if local else "public repositories"
+    print(f"check-site ok: {len(actual)} {mode}, {len(links.documents)} HTML pages, {links.count} internal links")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "_site")
+    parser.add_argument("--local", action="store_true", help="Validate generated structure and source license without querying live GitHub settings")
+    check(parser.parse_args())
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (SiteError, OSError, ValueError) as error:
+        print(f"check-site: {error}", file=sys.stderr)
+        sys.exit(1)

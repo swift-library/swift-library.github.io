@@ -1,0 +1,19 @@
+          <article id="project-$repository" class="project-card" data-repository="$repository">
+            <div class="project-heading">
+              <img class="project-logo" src="$logo" width="64" height="64" alt="" loading="lazy">
+              <div>
+                <h3 class="project-title">$title</h3>
+                <p class="project-version">$version</p>
+              </div>
+            </div>
+            <p class="project-description">$description</p>
+            <nav class="project-links" aria-label="$title links">
+              <a class="project-docs-link" href="$docs_url">Documentation <span aria-hidden="true">→</span></a>
+              <a class="project-github-link" href="$github_url">GitHub <span aria-hidden="true">↗</span></a>
+            </nav>
+            <div class="project-install-area">
+              <pre class="project-install" tabindex="0" aria-label="$title installation command"><code>$install_snippet</code></pre>
+              <button class="copy-button" type="button" aria-label="Copy $title installation command" hidden>Copy</button>
+              <span class="copy-status" role="status"></span>
+            </div>
+          </article>

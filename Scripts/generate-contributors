@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0 WITH Swift-exception
+"""Generate contributor names from the public, non-fork repository history."""
+
+import argparse
+from pathlib import Path
+import sys
+
+from site_support import GitHub, ROOT, SiteError, configuration, contributor_names, write_contributors
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=ROOT / "CONTRIBUTORS.txt")
+    args = parser.parse_args()
+    config = configuration()
+    api = GitHub()
+    repositories = api.public_repositories(config["organization"])
+    names = contributor_names(api, config["organization"], repositories)
+    write_contributors(args.output, names)
+    print(f"Generated {len(names)} contributor names")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SiteError as error:
+        print(f"contributors: {error}", file=sys.stderr)
+        sys.exit(1)
