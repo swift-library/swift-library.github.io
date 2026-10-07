@@ -22,7 +22,9 @@ loader.exec_module(build_site)
 
 class LinkTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        fixtures = SCRIPTS.parent / ".build/test-fixtures"
+        fixtures.mkdir(parents=True, exist_ok=True)
+        self.temporary = tempfile.TemporaryDirectory(dir=fixtures)
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
@@ -77,6 +79,20 @@ class LinkTests(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_documentation_traits_follow_tagged_manifest_and_keep_explicit_defaults(self):
+        manifest = {"traits": [{"name": "Experimental"}]}
+        self.assertEqual(build_site.documentation_traits(manifest, None), [])
+        self.assertEqual(build_site.documentation_traits(manifest, ["Experimental", "default"]),
+                         ["--traits", "Experimental,default"])
+
+    def test_invalid_trait_selection_fails_before_compilation(self):
+        manifest = {"traits": [{"name": "Experimental"}]}
+        for selection in [[], "Experimental", [True], ["Missing"],
+                          ["Experimental", "Experimental"], ["--disable-sandbox"]]:
+            with self.subTest(selection=selection):
+                with self.assertRaises(build_site.SiteError):
+                    build_site.documentation_traits(manifest, selection)
+
     def test_first_published_prerelease_enables_documentation(self):
         class API:
             def pages(self, endpoint):

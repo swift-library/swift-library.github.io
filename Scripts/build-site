@@ -57,6 +57,19 @@ def library_targets(manifest, selection):
     return names
 
 
+def documentation_traits(manifest, selection):
+    if selection is None:
+        return []
+    if (not isinstance(selection, list) or not selection
+            or any(not isinstance(name, str) for name in selection)
+            or len(selection) != len(set(selection))):
+        raise SiteError("Documentation traits must be a non-empty list of distinct names")
+    available = {trait["name"] for trait in manifest.get("traits", [])} | {"default"}
+    if not set(selection) <= available:
+        raise SiteError("Documentation traits must be declared by the tagged package")
+    return ["--traits", ",".join(selection)]
+
+
 def build_documentation(config, project, tag, cache, output, toolchain, jobs, color, icon):
     repo = project["repository"]
     fingerprint = hashlib.sha256(
@@ -87,12 +100,13 @@ def build_documentation(config, project, tag, cache, output, toolchain, jobs, co
         print(f"{repo}: extracting {len(modules)} modules at {tag['name']}", flush=True)
         swift_options = ["--build-system", "native", "--disable-index-store", "-Xswiftc", "-gnone",
                          "--scratch-path", str(scratch)]
+        swift_options += documentation_traits(manifest, project["documentation"].get("traits"))
         if jobs is not None:
             swift_options += ["--jobs", str(jobs)]
         # SwiftPM's symbol extraction includes generated test-runner modules.
         command(["swift", "build", *swift_options, "--build-tests"], cwd=source)
         command(["swift", "package", *swift_options, "dump-symbol-graph",
-                 "--minimum-access-level", "public"], cwd=source)
+                 "--minimum-access-level", "public", "--emit-extension-block-symbols"], cwd=source)
         graph_directories = [path for path in scratch.glob("*/symbolgraph") if path.is_dir()]
         if not graph_directories:
             graph_directories = [path for path in scratch.glob("*/*/symbolgraph") if path.is_dir()]
