@@ -3,11 +3,13 @@
 
 import importlib.machinery
 import importlib.util
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "Scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -183,6 +185,70 @@ class InputTests(unittest.TestCase):
         self.assertEqual(build_site.library_targets(manifest, "library-products"), ["One", "Two"])
         with self.assertRaises(build_site.SiteError):
             build_site.library_targets(manifest, ["CLI"])
+
+    def test_selected_build_supplies_public_and_extension_graphs(self):
+        fixtures = SCRIPTS.parent / ".build/test-fixtures"
+        fixtures.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=fixtures) as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "Package.swift").write_text("// fixture manifest\n")
+            manifest = {
+                "traits": [{"name": "Preview"}],
+                "products": [{"type": {"library": ["automatic"]}, "targets": ["Core"]}],
+                "targets": [{"name": "Core"}],
+            }
+            project = {"repository": "example", "documentation": {
+                "targets": "library-products", "traits": ["Preview", "default"],
+            }}
+            builds = []
+            converted = []
+
+            def command(arguments, cwd=None, capture=False):
+                if arguments[:3] == ["swift", "package", "dump-package"]:
+                    return json.dumps(manifest)
+                if arguments[:2] == ["swift", "build"]:
+                    builds.append(arguments)
+                    self.assertEqual(arguments[arguments.index("--traits") + 1], "Preview,default")
+                    self.assertIn("-emit-symbol-graph", arguments)
+                    self.assertIn("-emit-extension-block-symbols", arguments)
+                    level = arguments.index("-symbol-graph-minimum-access-level")
+                    self.assertEqual(arguments[level + 2], "public")
+                    destination = Path(arguments[arguments.index("-emit-symbol-graph-dir") + 2])
+                    for name, module in [("Core", "Core"), ("Core@Foundation", "Core"),
+                                         ("Dependency", "Dependency")]:
+                        (destination / (name + ".symbols.json")).write_text(
+                            json.dumps({"module": {"name": module}}))
+                    return ""
+                if arguments[:3] == ["xcrun", "docc", "convert"]:
+                    symbols = Path(arguments[arguments.index("--additional-symbol-graph-dir") + 1])
+                    converted.extend(path.name for path in symbols.glob("*.symbols.json"))
+                    Path(arguments[arguments.index("--output-path") + 1]).mkdir(parents=True)
+                    return ""
+                if arguments[:4] == ["xcrun", "docc", "process-archive", "transform-for-static-hosting"]:
+                    destination = Path(arguments[arguments.index("--output-path") + 1])
+                    landing = destination / "documentation/core/index.html"
+                    landing.parent.mkdir(parents=True)
+                    landing.write_text("Core documentation")
+                    return ""
+                self.fail(f"Unexpected external command: {arguments}")
+
+            output = root / "output"
+            output.mkdir()
+            with patch.object(build_site, "archive_source", return_value=nullcontext(source)), \
+                 patch.object(build_site, "command", side_effect=command), \
+                 patch.object(build_site, "add_identity"), \
+                 patch.object(build_site, "normalize_extension_hierarchy"), \
+                 patch.object(build_site, "identity_records", return_value=[]):
+                result = build_site.build_documentation(
+                    {"organization": "sample"}, project,
+                    {"name": "v1.0.0", "commit": {"sha": "a" * 40}},
+                    root / "cache", output, "fixture toolchain", 2, "blue", b"icon")
+            self.assertEqual(len(builds), 1)
+            self.assertEqual(set(converted), {"Core.symbols.json", "Core@Foundation.symbols.json"})
+            self.assertEqual(result["modules"], ["Core"])
+            self.assertTrue((output / "example/documentation/core/index.html").is_file())
 
 
 if __name__ == "__main__":

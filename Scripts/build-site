@@ -103,16 +103,16 @@ def build_documentation(config, project, tag, cache, output, toolchain, jobs, co
         swift_options += documentation_traits(manifest, project["documentation"].get("traits"))
         if jobs is not None:
             swift_options += ["--jobs", str(jobs)]
-        # SwiftPM's symbol extraction includes generated test-runner modules.
-        command(["swift", "build", *swift_options, "--build-tests"], cwd=source)
-        command(["swift", "package", *swift_options, "dump-symbol-graph",
-                 "--minimum-access-level", "public", "--emit-extension-block-symbols"], cwd=source)
-        graph_directories = [path for path in scratch.glob("*/symbolgraph") if path.is_dir()]
-        if not graph_directories:
-            graph_directories = [path for path in scratch.glob("*/*/symbolgraph") if path.is_dir()]
-        if len(graph_directories) != 1:
-            raise SiteError(f"{repo}: expected one symbol graph directory, got {len(graph_directories)}")
-        all_graphs = list(graph_directories[0].glob("*.symbols.json"))
+        # Compiler emission preserves the selected traits; SwiftPM's separate
+        # symbol-graph command enables every trait when it creates its build plan.
+        graph_directory = work / "symbol-graphs"
+        graph_directory.mkdir(parents=True, exist_ok=True)
+        command(["swift", "build", *swift_options,
+                 "-Xswiftc", "-emit-symbol-graph",
+                 "-Xswiftc", "-emit-symbol-graph-dir", "-Xswiftc", str(graph_directory),
+                 "-Xswiftc", "-symbol-graph-minimum-access-level", "-Xswiftc", "public",
+                 "-Xswiftc", "-emit-extension-block-symbols"], cwd=source)
+        all_graphs = list(graph_directory.glob("*.symbols.json"))
         module_graphs = {}
         for path in all_graphs:
             module = json.loads(path.read_text())["module"]["name"]
