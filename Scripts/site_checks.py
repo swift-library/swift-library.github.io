@@ -9,6 +9,8 @@ import posixpath
 import re
 from urllib.parse import unquote, urlsplit
 
+from site_docc import referenced_values
+
 
 class HTML(HTMLParser):
     def __init__(self):
@@ -43,6 +45,17 @@ def json_anchors(value):
         for child in value:
             result.update(json_anchors(child))
     return result
+
+
+def chapter_labels(document):
+    # Tutorial chapters label groups in the navigation; their projects are links.
+    chapters = {chapter.get("reference") for chapter in (document.get("hierarchy") or {}).get("modules", [])}
+    content = {key: value for key, value in document.items() if key not in {"hierarchy", "references"}}
+    used = referenced_values(content)
+    for identifier, reference in document.get("references", {}).items():
+        if identifier not in chapters:
+            used.update(referenced_values(reference))
+    return chapters - used
 
 
 class Links:
@@ -117,7 +130,10 @@ class Links:
                 continue
             for source in sorted((directory / "data").rglob("*.json")):
                 value = json.loads(source.read_text())
-                for reference in value.get("references", {}).values():
+                labels = chapter_labels(value)
+                for identifier, reference in value.get("references", {}).items():
+                    if identifier in labels:
+                        continue
                     if isinstance(reference.get("url"), str):
                         self.check(reference["url"], source, directory.name)
                     for variant in reference.get("variants", []):

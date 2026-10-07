@@ -37,6 +37,15 @@ products from each tagged manifest and merges multi-module documentation.
 Source archives are downloaded at the tag's full commit SHA and removed after
 conversion. No repository checkout is copied into the build cache.
 
+A DocC catalog entry may select `traits` from its tagged package, including
+`default` when it needs the default APIs. Both compilation and symbol extraction
+use that selection. Omitted traits keep the package defaults. Symbol extraction
+includes extensions to external types so those APIs remain linkable in DocC.
+Generated breadcrumbs omit external-type containers for which DocC emits no
+page, while keeping the package's actual extension members. The link checker
+distinguishes tutorial chapter labels from navigable tutorial pages; explicit
+content links still require a real destination.
+
 For landings without their own identity, the builder adds the repository's
 current `Logo.png` and derives the named DocC color from the organization's
 `DESIGN.md`. Existing package directives remain authoritative. A synthesized

@@ -12,6 +12,7 @@ import unittest
 SCRIPTS = Path(__file__).resolve().parent.parent / "Scripts"
 sys.path.insert(0, str(SCRIPTS))
 from site_checks import Links
+from site_docc import normalize_extension_hierarchy
 from site_support import contributor_names, latest_release
 
 loader = importlib.machinery.SourceFileLoader("build_site", str(SCRIPTS / "build-site"))
@@ -22,7 +23,9 @@ loader.exec_module(build_site)
 
 class LinkTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
+        fixtures = SCRIPTS.parent / ".build/test-fixtures"
+        fixtures.mkdir(parents=True, exist_ok=True)
+        self.temporary = tempfile.TemporaryDirectory(dir=fixtures)
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
@@ -75,8 +78,78 @@ class LinkTests(unittest.TestCase):
         self.write("package/data/documentation/module/member.name.json", json.dumps({"sections": [{"anchor": "usage"}]}))
         self.assertEqual(Links(self.root, "https://example.org/").scan(), [])
 
+    def test_tutorial_chapter_labels_do_not_require_standalone_pages(self):
+        self.write("package/tutorials/example/step/index.html", "")
+        document = {
+            "hierarchy": {"modules": [{"reference": "chapter", "projects": [{"reference": "step"}]}]},
+            "references": {"chapter": {"url": "/tutorials/example/chapter"},
+                           "step": {"url": "/tutorials/example/step"}},
+        }
+        path = self.write("package/data/tutorials/example/step.json", json.dumps(document))
+        self.assertEqual(Links(self.root, "https://example.org/").scan(), [])
+        document["abstract"] = [{"type": "reference", "identifier": "chapter"}]
+        path.write_text(json.dumps(document))
+        self.assertEqual(len(Links(self.root, "https://example.org/").scan()), 1)
+
+    def extension_document(self):
+        return {
+            "hierarchy": {"paths": [["module", "module/External", "module/External/Value", "member"]]},
+            "references": {
+                "module": {"url": "/documentation/module", "role": "collection"},
+                "module/External": {"url": "/documentation/module/external", "role": "collection"},
+                "module/External/Value": {"url": "/documentation/module/external/value", "role": "symbol",
+                                           "fragments": [{"kind": "keyword", "text": "extension"}]},
+                "member": {"url": "/documentation/module/member", "role": "symbol"},
+            },
+        }
+
+    def test_missing_external_containers_are_removed_from_breadcrumbs(self):
+        document = self.extension_document()
+        path = self.write("package/data/documentation/module/member.json", json.dumps(document))
+        self.write("package/documentation/module/index.html", "")
+        self.write("package/documentation/module/member/index.html", "")
+        self.assertEqual(normalize_extension_hierarchy(self.root / "package"), 1)
+        actual = json.loads(path.read_text())
+        self.assertEqual(actual["hierarchy"]["paths"], [["module", "member"]])
+        self.assertEqual(set(actual["references"]), {"module", "member"})
+        self.assertEqual(Links(self.root, "https://example.org/").scan(), [])
+
+    def test_rendered_extension_containers_are_preserved(self):
+        document = self.extension_document()
+        path = self.write("package/data/documentation/module/member.json", json.dumps(document))
+        self.write("package/data/documentation/module/external/value.json", "{}")
+        self.assertEqual(normalize_extension_hierarchy(self.root / "package"), 0)
+        self.assertEqual(json.loads(path.read_text()), document)
+
+    def test_missing_authored_links_and_regular_ancestors_still_fail(self):
+        document = self.extension_document()
+        document["abstract"] = [{"type": "reference", "identifier": "module/External/Value"}]
+        path = self.write("package/data/documentation/module/member.json", json.dumps(document))
+        self.write("package/documentation/module/member/index.html", "")
+        normalize_extension_hierarchy(self.root / "package")
+        actual = json.loads(path.read_text())
+        self.assertIn("module/External/Value", actual["references"])
+        errors = Links(self.root, "https://example.org/").scan()
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(any("/documentation/module/external/value" in error for error in errors))
+        self.assertTrue(any(error.endswith("missing target /documentation/module") for error in errors))
+
 
 class InputTests(unittest.TestCase):
+    def test_documentation_traits_follow_tagged_manifest_and_keep_explicit_defaults(self):
+        manifest = {"traits": [{"name": "Experimental"}]}
+        self.assertEqual(build_site.documentation_traits(manifest, None), [])
+        self.assertEqual(build_site.documentation_traits(manifest, ["Experimental", "default"]),
+                         ["--traits", "Experimental,default"])
+
+    def test_invalid_trait_selection_fails_before_compilation(self):
+        manifest = {"traits": [{"name": "Experimental"}]}
+        for selection in [[], "Experimental", [True], ["Missing"],
+                          ["Experimental", "Experimental"], ["--disable-sandbox"]]:
+            with self.subTest(selection=selection):
+                with self.assertRaises(build_site.SiteError):
+                    build_site.documentation_traits(manifest, selection)
+
     def test_first_published_prerelease_enables_documentation(self):
         class API:
             def pages(self, endpoint):
