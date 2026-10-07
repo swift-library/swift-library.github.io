@@ -178,17 +178,26 @@ def identity_records(archive, modules, merged, repository=None):
     return records
 
 
+def referenced_values(value):
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return set().union(*(referenced_values(child) for child in value.values()))
+    if isinstance(value, list):
+        return set().union(*(referenced_values(child) for child in value))
+    return set()
+
+
 def normalize_extension_hierarchy(archive):
     """Keep breadcrumbs on rendered pages when DocC omits external-type containers."""
     from urllib.parse import unquote, urlsplit
-    from site_checks import referenced_values
 
     data = archive / "data"
     changed = 0
     for path in data.rglob("*.json"):
         document = json.loads(path.read_text())
         references = document.get("references", {})
-        hierarchy = document.get("hierarchy", {}).get("paths", [])
+        hierarchy = (document.get("hierarchy") or {}).get("paths", [])
         ancestors = set(value for branch in hierarchy for value in branch)
 
         def has_page(reference):
