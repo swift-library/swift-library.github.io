@@ -21,7 +21,7 @@ from site_support import (
 
 from site_docc import (
     PIPELINE_SOURCE as DOCC_PIPELINE_SOURCE, add_identity, archive_source,
-    design_colors, identity_records, merged_identity,
+    design_colors, identity_records, merged_identity, normalize_extension_hierarchy,
 )
 
 SCRIPT_SOURCE = Path(__file__).read_text()
@@ -159,6 +159,7 @@ def build_documentation(config, project, tag, cache, output, toolchain, jobs, co
                      "--output-path", str(archive), "--synthesized-landing-page-name", repo])
         if len(archives) > 1:
             merged_identity(archive, repo, color, icon)
+        normalize_extension_hierarchy(archive)
         if published.exists():
             shutil.rmtree(published)
         command(["xcrun", "docc", "process-archive", "transform-for-static-hosting", str(archive),

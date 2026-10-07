@@ -176,3 +176,49 @@ def identity_records(archive, modules, merged, repository=None):
             raise SiteError(f"DocC landing has no icon variants: {landing}")
         records.append({"landing": landing, "color": color, "icons": assets})
     return records
+
+
+def normalize_extension_hierarchy(archive):
+    """Keep breadcrumbs on rendered pages when DocC omits external-type containers."""
+    from urllib.parse import unquote, urlsplit
+    from site_checks import referenced_values
+
+    data = archive / "data"
+    changed = 0
+    for path in data.rglob("*.json"):
+        document = json.loads(path.read_text())
+        references = document.get("references", {})
+        hierarchy = document.get("hierarchy", {}).get("paths", [])
+        ancestors = set(value for branch in hierarchy for value in branch)
+
+        def has_page(reference):
+            route = unquote(urlsplit(reference.get("url", "")).path).lstrip("/")
+            target = (data / (route + ".json")).resolve()
+            return target.is_relative_to(data.resolve()) and target.is_file()
+
+        omitted = set()
+        for identifier in ancestors:
+            reference = references.get(identifier, {})
+            is_extension = any(fragment.get("kind") == "keyword" and fragment.get("text") == "extension"
+                               for fragment in reference.get("fragments", []))
+            if not is_extension or has_page(reference):
+                continue
+            omitted.add(identifier)
+            module = identifier.rsplit("/", 1)[0]
+            parent = references.get(module, {})
+            if module in ancestors and parent.get("role") == "collection" and not has_page(parent):
+                omitted.add(module)
+        if not omitted:
+            continue
+        document["hierarchy"]["paths"] = [[value for value in branch if value not in omitted]
+                                           for branch in hierarchy]
+        other_content = {key: value for key, value in document.items() if key != "references"}
+        uses = referenced_values(other_content)
+        for identifier, reference in references.items():
+            if identifier not in omitted:
+                uses.update(referenced_values(reference))
+        for identifier in omitted - uses:
+            references.pop(identifier, None)
+        path.write_text(json.dumps(document, ensure_ascii=False) + "\n")
+        changed += 1
+    return changed

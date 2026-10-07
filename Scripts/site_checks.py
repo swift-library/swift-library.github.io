@@ -45,6 +45,27 @@ def json_anchors(value):
     return result
 
 
+def referenced_values(value):
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, dict):
+        return set().union(*(referenced_values(child) for child in value.values()))
+    if isinstance(value, list):
+        return set().union(*(referenced_values(child) for child in value))
+    return set()
+
+
+def chapter_labels(document):
+    # Tutorial chapters label groups in the navigation; their projects are links.
+    chapters = {chapter.get("reference") for chapter in document.get("hierarchy", {}).get("modules", [])}
+    content = {key: value for key, value in document.items() if key not in {"hierarchy", "references"}}
+    used = referenced_values(content)
+    for identifier, reference in document.get("references", {}).items():
+        if identifier not in chapters:
+            used.update(referenced_values(reference))
+    return chapters - used
+
+
 class Links:
     def __init__(self, root, site_url):
         self.root = root.resolve()
@@ -117,7 +138,10 @@ class Links:
                 continue
             for source in sorted((directory / "data").rglob("*.json")):
                 value = json.loads(source.read_text())
-                for reference in value.get("references", {}).values():
+                labels = chapter_labels(value)
+                for identifier, reference in value.get("references", {}).items():
+                    if identifier in labels:
+                        continue
                     if isinstance(reference.get("url"), str):
                         self.check(reference["url"], source, directory.name)
                     for variant in reference.get("variants", []):
