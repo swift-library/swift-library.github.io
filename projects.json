@@ -15,6 +15,7 @@
         {"repository": "swift-gyb", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "swift-package"},
         {"repository": "swift-userdefault", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-redux", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
+        {"repository": "swift-interface-distiller", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-json-schema", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-pdf", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-appstoreconnect", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products", "traits": ["Experimental", "default"]}, "install": "swift-package"}
