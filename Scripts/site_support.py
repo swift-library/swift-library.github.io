@@ -22,11 +22,15 @@ class SiteError(RuntimeError):
 def configuration():
     config = json.loads((ROOT / "projects.json").read_text())
     repositories = [p["repository"] for g in config["groups"] for p in g["projects"]]
+    repositories += list(config["navigation"].values())
     if len(repositories) != len(set(repositories)):
         raise SiteError("projects.json contains duplicate repositories")
-    for project in projects(config):
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", project["repository"]):
+    if set(config["navigation"]) != {"documentation", "standards"}:
+        raise SiteError("Navigation needs documentation and standards repositories")
+    for repository in repositories:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", repository):
             raise SiteError("Invalid repository name")
+    for project in projects(config):
         if project["documentation"]["kind"] not in {"docc", "readme"}:
             raise SiteError("Invalid documentation kind")
     return config
@@ -34,6 +38,34 @@ def configuration():
 
 def projects(config):
     return [project for group in config["groups"] for project in group["projects"]]
+
+
+def profile_presentation(config, profile):
+    expected = [(group["title"], [item["name"] for item in group["repositories"]])
+                for group in profile["groups"]]
+    actual = [(group["name"], [item["repository"] for item in group["projects"]])
+              for group in config["groups"]]
+    if profile["organization"] != config["organization"] or expected != actual:
+        raise SiteError("Website catalog groups and order must match the organization profile")
+    if config["navigation"] != profile["navigation"]:
+        raise SiteError("Website navigation roles must match the organization profile")
+    roles = [item["repository"] for item in projects(config)] + list(config["navigation"].values())
+    if len(roles) != len(set(roles)):
+        raise SiteError("Every repository needs one catalog or navigation role")
+    promise = profile["promise"]
+    if not all(isinstance(promise.get(key), str) and promise[key].strip()
+               for key in ["heading", "secondary", "description"]):
+        raise SiteError("Organization promise needs heading, secondary line and description")
+    if promise["heading"] != promise["description"]:
+        raise SiteError("Organization heading and description must use the same promise")
+    return {"promise": promise, "navigation": profile["navigation"]}
+
+
+def load_presentation(config, api, repositories, source=None):
+    content = (source.read_text() if source else
+               api.text_file(config["organization"], ".github", "profile/catalog.json",
+                             repositories[".github"]["default_branch"]))
+    return profile_presentation(config, json.loads(content))
 
 
 def write_json(path, value):

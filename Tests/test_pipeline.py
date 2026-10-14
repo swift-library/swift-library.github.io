@@ -15,7 +15,7 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "Scripts"
 sys.path.insert(0, str(SCRIPTS))
 from site_checks import Links
 from site_docc import normalize_extension_hierarchy
-from site_support import contributor_names, latest_release
+from site_support import contributor_names, latest_release, profile_presentation, SiteError
 
 loader = importlib.machinery.SourceFileLoader("build_site", str(SCRIPTS / "build-site"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -249,6 +249,37 @@ class InputTests(unittest.TestCase):
             self.assertEqual(set(converted), {"Core.symbols.json", "Core@Foundation.symbols.json"})
             self.assertEqual(result["modules"], ["Core"])
             self.assertTrue((output / "example/documentation/core/index.html").is_file())
+
+
+class PresentationTests(unittest.TestCase):
+    def inputs(self):
+        profile = {"organization": "example", "promise": {
+            "heading": "Packages for apps.", "description": "Packages for apps.",
+            "secondary": "Choose the APIs your app needs."},
+            "navigation": {"documentation": "example.github.io", "standards": ".github"},
+            "groups": [{"title": "Build apps", "repositories": [{"name": "model"}, {"name": "view"}]}]}
+        config = {"organization": "example", "navigation": dict(profile["navigation"]),
+                  "groups": [{"id": "build-apps", "name": "Build apps",
+                              "projects": [{"repository": "model"}, {"repository": "view"}]}]}
+        return config, profile
+
+    def test_promise_and_navigation_share_the_profile_source(self):
+        config, profile = self.inputs()
+        result = profile_presentation(config, profile)
+        self.assertEqual(result, {"promise": profile["promise"], "navigation": profile["navigation"]})
+
+    def test_catalog_order_must_match_the_profile(self):
+        config, profile = self.inputs()
+        config["groups"][0]["projects"].reverse()
+        with self.assertRaisesRegex(SiteError, "groups and order"):
+            profile_presentation(config, profile)
+
+    def test_navigation_repositories_cannot_also_have_catalog_cards(self):
+        config, profile = self.inputs()
+        config["navigation"]["standards"] = "model"
+        profile["navigation"]["standards"] = "model"
+        with self.assertRaisesRegex(SiteError, "one catalog or navigation role"):
+            profile_presentation(config, profile)
 
 
 if __name__ == "__main__":
