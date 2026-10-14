@@ -2,30 +2,18 @@ name: Pages
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   push:
     branches: [master]
-  schedule:
-    - cron: '17 3 * * 1'
   workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  policy:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    permissions:
-      contents: read
-    uses: swift-library/.github/.github/workflows/policy.yml@c4fac2499d45d7ff3fb543e803e89dae2be5a6c6
-    with:
-      allow-terms: |
-        Codex
-        Cursor
-
   build:
     runs-on: macos-26
     timeout-minutes: 120
@@ -41,6 +29,14 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: '26.6'
+      - name: Install the workflow validator
+        env:
+          GOBIN: ${{ github.workspace }}/.build/workflow-tools
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Check workflow schemas
+        run: Scripts/check-workflows
       - name: Check pipeline
         run: python3 -m unittest discover -s Tests -v
       - name: Build site
@@ -57,36 +53,13 @@ jobs:
           path: _site
 
   result:
-    needs: [policy, build]
+    needs: build
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require successful validation
         env:
-          POLICY: ${{ needs.policy.result }}
           BUILD: ${{ needs.build.result }}
-          EVENT: ${{ github.event_name }}
         run: |
           test "$BUILD" = success
-          if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then
-            test "$POLICY" = success
-          else
-            test "$POLICY" = skipped
-          fi
-
-  deploy:
-    needs: [build, result]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
