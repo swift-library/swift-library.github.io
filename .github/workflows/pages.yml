@@ -14,6 +14,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Install the workflow validator
+        env:
+          GOBIN: ${{ github.workspace }}/.build/workflow-tools
+          GOMODCACHE: ${{ github.workspace }}/.build/workflow-modules
+          GOCACHE: ${{ github.workspace }}/.build/workflow-build
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$GOBIN" >> "$GITHUB_PATH"
+      - name: Check workflow schemas
+        run: Scripts/check-workflows
+
   build:
     runs-on: macos-26
     timeout-minutes: 120
@@ -29,14 +53,6 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: '26.6'
-      - name: Install the workflow validator
-        env:
-          GOBIN: ${{ github.workspace }}/.build/workflow-tools
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$GOBIN" >> "$GITHUB_PATH"
-      - name: Check workflow schemas
-        run: Scripts/check-workflows
       - name: Check pipeline
         run: python3 -m unittest discover -s Tests -v
       - name: Build site
@@ -53,7 +69,7 @@ jobs:
           path: _site
 
   result:
-    needs: build
+    needs: [workflows, build]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -61,5 +77,7 @@ jobs:
       - name: Require successful validation
         env:
           BUILD: ${{ needs.build.result }}
+          WORKFLOWS: ${{ needs.workflows.result }}
         run: |
           test "$BUILD" = success
+          test "$WORKFLOWS" = success

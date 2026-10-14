@@ -18,12 +18,26 @@ class WorkflowTests(unittest.TestCase):
         text = (WORKFLOWS / 'pages.yml').read_text()
         events = re.search(r'types: \[([^\]]+)\]', text)[1]
         self.assertEqual(set(events.split(', ')), {'opened', 'synchronize', 'reopened'})
-        self.assertIn('  result:\n    needs: build\n    if: always()', text)
+        self.assertIn('  result:\n    needs: [workflows, build]\n    if: always()', text)
         self.assertIn('test "$BUILD" = success', text)
+        self.assertIn('test "$WORKFLOWS" = success', text)
         self.assertNotIn('  policy:', text)
         self.assertNotIn('  deploy:', text)
         self.assertIn('cancel-in-progress: true', text)
         self.assertNotIn('  schedule:', text)
+
+    def test_workflow_lint_has_an_explicit_toolchain_on_ubuntu(self):
+        text = (WORKFLOWS / 'pages.yml').read_text()
+        lint, build = text.split('  build:\n', 1)
+        self.assertIn('  workflows:\n    runs-on: ubuntu-latest', lint)
+        self.assertRegex(lint, r'uses: actions/setup-go@[0-9a-f]{40}')
+        version = re.search(r"go-version: '(\d+)\.(\d+)\.(\d+)'", lint)
+        self.assertIsNotNone(version)
+        self.assertGreaterEqual(tuple(map(int, version.groups())), (1, 25, 0))
+        self.assertLess(lint.index('uses: actions/setup-go@'), lint.index('go install'))
+        self.assertIn('run: Scripts/check-workflows', lint)
+        self.assertNotIn('go install', build)
+        self.assertIn('runs-on: macos-26', build)
 
     def test_policy_caller_keeps_title_edits_and_the_policy_job(self):
         text = (WORKFLOWS / 'source-policy.yml').read_text()
