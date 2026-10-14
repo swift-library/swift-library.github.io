@@ -263,10 +263,11 @@ class PresentationTests(unittest.TestCase):
                               "projects": [{"repository": "model"}, {"repository": "view"}]}]}
         return config, profile
 
-    def test_promise_and_navigation_share_the_profile_source(self):
+    def test_heading_and_description_must_publish_the_same_promise(self):
         config, profile = self.inputs()
-        result = profile_presentation(config, profile)
-        self.assertEqual(result, {"promise": profile["promise"], "navigation": profile["navigation"]})
+        profile["promise"]["description"] = "Another promise."
+        with self.assertRaisesRegex(SiteError, "same promise"):
+            profile_presentation(config, profile)
 
     def test_catalog_order_must_match_the_profile(self):
         config, profile = self.inputs()
