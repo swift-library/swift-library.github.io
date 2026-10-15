@@ -21,7 +21,7 @@ Scripts/build-site --jobs 2
 Scripts/check-site --local
 Scripts/check-site
 python3 -m unittest discover -s Tests -v
-actionlint .github/workflows/pages.yml
+Scripts/check-workflows
 ```
 
 `_site/` contains generated pages. `.site-cache/` contains documentation build
@@ -92,6 +92,15 @@ when JavaScript or clipboard access is unavailable.
 ## Deployment
 
 `.github/workflows/pages.yml` validates pull requests and builds on pushes to
-`master`, weekly, or manual dispatch. Only a successful default-branch build can
-deploy. The `result` job aggregates policy and build validation. The build job reads source and metadata; the deployment job holds
-Pages and OIDC permissions. Configure GitHub Pages to deploy through Actions.
+`master` or manual dispatch. `refresh.yml` dispatches validation weekly so the
+catalog and tagged documentation stay current. Pull-request title and body
+edits run only `source-policy.yml`, preserving the separate required
+`policy / policy` check. The required `result` job aggregates workflow-schema
+validation and the complete site build and live checks.
+
+`publish.yml` reads the archive from a successful default-branch Pages run,
+excluding pull requests and foreign source repositories. The validated source
+must still match the publication workflow's default-branch commit. It queues
+deployments without cancelling running or pending publications. The build job
+reads source and metadata; publication holds Pages and OIDC permissions.
+Configure GitHub Pages to deploy through Actions.
