@@ -16,7 +16,7 @@ import sys
 
 from site_support import (
     GitHub, ROOT, SiteError, configuration, contributor_names, latest_release, latest_tag,
-    projects, readme_url, write_contributors, write_json,
+    projects, readme_url, write_contributors, write_json, load_presentation,
 )
 
 from site_docc import (
@@ -194,6 +194,7 @@ def build(args):
     config = configuration()
     api = GitHub()
     repositories = api.public_repositories(config["organization"])
+    presentation = load_presentation(config, api, repositories, args.profile_file)
     output = args.output.resolve()
     cache = args.cache_dir.resolve()
     if output == ROOT or ROOT.is_relative_to(output) or cache.is_relative_to(output):
@@ -263,17 +264,24 @@ def build(args):
         shutil.copytree(assets, output / "assets")
     pages = {
         "index.html": ("swift-library", render("home.html", groups="\n".join(groups_html),
-                                               organization_logo=escape(config["organization_logo"], quote=True))),
+                                               organization_logo=escape(config["organization_logo"], quote=True),
+                                               promise_heading=escape(presentation["promise"]["heading"]),
+                                               promise_secondary=escape(presentation["promise"]["secondary"]))),
         "contributing/index.html": ("Contributing · swift-library", render("contributing.html")),
         "404.html": ("Page not found · swift-library", render("404.html")),
     }
     for path, (title, content) in pages.items():
         destination = output / path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(render("page.html", title=escape(title), content=content))
+        destination.write_text(render(
+            "page.html", title=escape(title), content=content,
+            description=escape(presentation["promise"]["description"], quote=True),
+            standards_url=escape(f"https://github.com/{config['organization']}/{config['navigation']['standards']}", quote=True),
+            website_source_url=escape(f"https://github.com/{config['organization']}/{config['navigation']['documentation']}", quote=True)))
     write_json(output / "build-manifest.json", {
         "organization": config["organization"], "site_url": config["site_url"],
         "projects": catalog, "skipped": skipped, "contributors": len(names),
+        "presentation": presentation,
     })
     print(f"Built {len(catalog)} catalog entries and {sum(p['documentation'] is not None for p in catalog)} documentation sites", flush=True)
 
@@ -285,6 +293,7 @@ def main():
     parser.add_argument("--jobs", type=int, help="Maximum concurrent Swift build jobs")
     parser.add_argument("--design-file", type=Path, help="Use a local organization DESIGN.md for publication preview")
     parser.add_argument("--identity-root", type=Path, help="Read repository logos from local checkouts for publication preview")
+    parser.add_argument("--profile-file", type=Path, help="Use a local profile catalog for presentation preview")
     args = parser.parse_args()
     if args.jobs is not None and args.jobs < 1:
         parser.error("--jobs must be positive")

@@ -14,7 +14,7 @@ jobs:
   policy:
     permissions:
       contents: read
-    uses: swift-library/.github/.github/workflows/policy.yml@67fa367de1edf9396756e593186ff8815928902d
+    uses: swift-library/.github/.github/workflows/policy.yml@3a27222778db4bee5634240de838ced7ff2e13d5
     with:
       allow-terms: |
         Codex
