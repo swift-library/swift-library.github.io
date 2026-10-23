@@ -17,15 +17,15 @@ Use Python 3.12 or later, Git, Xcode with Swift and DocC, and GitHub authenticat
 runner and Xcode selection.
 
 ```sh
-Scripts/build-site --jobs 2
-Scripts/check-site --local
-Scripts/check-site
+scripts/build-site --jobs 2
+scripts/check-site --local
+scripts/check-site
 python3 -m unittest discover -s Tests -v
-Scripts/check-workflows
+scripts/check-workflows
 ```
 
 `_site/` contains generated pages. `.site-cache/` contains documentation build
-inputs and outputs. Both are ignored. `Scripts/check-site` validates generated
+inputs and outputs. Both are ignored. `scripts/check-site` validates generated
 links, public catalog membership and ordering, GitHub descriptions and licenses,
 and the contributing and attribution pages. It needs current GitHub access.
 Use `--local` before the site's first publication to check generated structure,
@@ -58,7 +58,7 @@ checks verify every landing's metadata and icon bytes against the build receipt.
 
 To preview unmerged organization artwork, pass `--design-file` with its local
 `DESIGN.md`, `--profile-file` with its `profile/catalog.json`, and
-`--identity-root` with the parent of the package checkouts. `Scripts/check-site`
+`--identity-root` with the parent of the package checkouts. `scripts/check-site`
 accepts the same `--profile-file` for a local presentation preview.
 Deployment uses the public default-branch sources and does not set those options.
 
@@ -86,7 +86,7 @@ when JavaScript or clipboard access is unavailable.
 - The organization artwork is derived from the organization design source;
   its source and attribution belong to the
   [brand assets](https://github.com/swift-library/.github/tree/master/Brand/Avatar).
-- `Scripts/` owns build, metadata, and validation behavior. `Tests/` owns
+- `scripts/` owns build, metadata, and validation behavior. `Tests/` owns
   pipeline regression coverage.
 
 ## Deployment

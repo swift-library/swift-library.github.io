@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "Scripts"))
-loader = importlib.machinery.SourceFileLoader("check_site", str(ROOT / "Scripts/check-site"))
+sys.path.insert(0, str(ROOT / "scripts"))
+loader = importlib.machinery.SourceFileLoader("check_site", str(ROOT / "scripts/check-site"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 check_site = importlib.util.module_from_spec(spec)
 loader.exec_module(check_site)

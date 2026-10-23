@@ -37,7 +37,7 @@ Read API docs for an installable release, with each package’s own landing-page
 Build and serve a local catalog:
 
 ```sh
-Scripts/build-site --jobs 2
+scripts/build-site --jobs 2
 python3 -m http.server 8765 --bind 127.0.0.1 --directory _site
 ```
 
@@ -54,7 +54,7 @@ Visitors can browse the [published catalog](https://swift-library.github.io/) di
 
 ## Usage
 
-Edit catalog structure in `projects.json` and presentation in `templates/` and `assets/`. Run `Scripts/build-site`, then `Scripts/check-site`; the [development guide](Documentation/Development.md) explains metadata inputs, DocC selection, caches, and preview checks.
+Edit catalog structure in `projects.json` and presentation in `templates/` and `assets/`. Run `scripts/build-site`, then `scripts/check-site`; the [development guide](Documentation/Development.md) explains metadata inputs, DocC selection, caches, and preview checks.
 
 ## Requirements
 
