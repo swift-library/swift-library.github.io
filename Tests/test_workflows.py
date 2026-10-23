@@ -43,6 +43,10 @@ class WorkflowTests(unittest.TestCase):
         text = (WORKFLOWS / 'source-policy.yml').read_text()
         self.assertIn('types: [opened, synchronize, reopened, edited]', text)
         self.assertIn('  policy:', text)
+        self.assertRegex(text, r'uses: swift-library/github-workflows/\.github/workflows/policy\.yml@[0-9a-f]{40}')
+        self.assertIn('      allow-terms: |\n        Codex\n        Cursor', text)
+        self.assertEqual(text.count('contents: read'), 2)
+        self.assertNotIn(': write', text)
         self.assertIn('cancel-in-progress: true', text)
 
     def test_publication_uses_only_the_completed_master_validation_artifact(self):
