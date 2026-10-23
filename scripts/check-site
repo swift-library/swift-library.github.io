@@ -10,7 +10,7 @@ import sys
 
 from site_checks import Links
 from site_docc import identity_records
-from site_support import GitHub, ROOT, SiteError, configuration, projects, load_presentation
+from site_support import GitHub, ROOT, SiteError, configuration, projects, load_presentation, validate_navigation
 
 
 def check(args):
@@ -36,7 +36,7 @@ def check(args):
         repositories = {name: {} for name in expected}
     else:
         repositories = api.public_repositories(config["organization"])
-        expected = set(repositories) - set(config["navigation"].values())
+        expected = set(repositories) - {".github"}
     actual = [entry["repository"] for entry in manifest["projects"]]
     cards = links.html(output / "index.html").repositories
     configured = [p["repository"] for p in projects(config) if p["repository"] in repositories]
@@ -83,18 +83,15 @@ def check(args):
         errors.append("Contributor names must be unique and contain no emails or bots")
 
     presentation = manifest.get("presentation", {})
-    if presentation.get("navigation") != config["navigation"]:
-        errors.append("Published navigation differs from configured repository roles")
+    navigation = validate_navigation(presentation.get("navigation"))
     homepage = links.html(output / "index.html")
-    for name in config["navigation"].values():
-        if f"https://github.com/{config['organization']}/{name}" not in homepage.links:
+    for name, link in navigation.items():
+        if link["url"] not in homepage.links:
             errors.append(f"Missing navigation link for {name}")
-    if not local:
-        if set(actual) | set(config["navigation"].values()) != set(repositories):
-            errors.append("Catalog and navigation roles do not cover all public repositories")
+    if not local or args.profile_file:
         current = load_presentation(config, api, repositories, args.profile_file)
         if presentation != current:
-            errors.append("Organization promise changed; rebuild")
+            errors.append("Organization presentation changed; rebuild")
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

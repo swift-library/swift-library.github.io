@@ -265,8 +265,8 @@ def build(args):
     pages = {
         "index.html": ("swift-library", render("home.html", groups="\n".join(groups_html),
                                                organization_logo=escape(config["organization_logo"], quote=True),
-                                               promise_heading=escape(presentation["promise"]["heading"]),
-                                               promise_secondary=escape(presentation["promise"]["secondary"]))),
+                                               promise_heading=escape(presentation["promise"]),
+                                               promise_secondary=escape(presentation["secondary"]))),
         "contributing/index.html": ("Contributing · swift-library", render("contributing.html")),
         "404.html": ("Page not found · swift-library", render("404.html")),
     }
@@ -275,9 +275,10 @@ def build(args):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(render(
             "page.html", title=escape(title), content=content,
-            description=escape(presentation["promise"]["description"], quote=True),
-            standards_url=escape(f"https://github.com/{config['organization']}/{config['navigation']['standards']}", quote=True),
-            website_source_url=escape(f"https://github.com/{config['organization']}/{config['navigation']['documentation']}", quote=True)))
+            description=escape(presentation["description"], quote=True),
+            profile_navigation="\n".join(
+                f'      <a href="{escape(link["url"], quote=True)}">{escape(link["label"])}</a>'
+                for link in presentation["navigation"].values())))
     write_json(output / "build-manifest.json", {
         "organization": config["organization"], "site_url": config["site_url"],
         "projects": catalog, "skipped": skipped, "contributors": len(names),

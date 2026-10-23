@@ -1,10 +1,15 @@
 # Site development
 
-`projects.json` owns catalog roles, ordering, logo locations, installation
+`projects.json` owns catalog membership, ordering, logo locations, installation
 kinds, and documentation selection. The organization’s `profile/catalog.json`
-owns the promise and reviewed groups; the builder and checks require matching
-group order and navigation roles. Standards and the website source are footer
-links rather than project cards. The umbrella icon heads the catalog; the
+owns the promise, secondary line, description, reviewed groups and navigation.
+The builder and checks require a matching organization login and exact group
+order. All public non-fork repositories except `.github` have project cards.
+The catalog's labeled Documentation, Contributing, Security and Support links
+appear in the footer alongside the site's license, contributors and versioning
+links. `github-workflows` and the website link to their READMEs and use the
+existing `git` installation kind to offer a clone command.
+The umbrella icon heads the catalog; the
 organization avatar remains the favicon. Build-time GitHub metadata supplies
 public repository membership, descriptions, tags, releases, and contributor names.
 The site publishes DocC for released packages and links other projects to
@@ -31,7 +36,7 @@ and the contributing and attribution pages. It needs current GitHub access.
 Use `--local` before the site's first publication to check generated structure,
 configured catalog entries and the source license without GitHub queries. The
 full check remains required after bootstrap and for deployment; it verifies
-live repository membership across catalog and navigation roles, descriptions,
+live repository membership, descriptions,
 licensing and profile ordering.
 
 Documentation comes from the latest tagged source for packages with a
