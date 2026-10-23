@@ -3,7 +3,6 @@
   "site_repository": "swift-library.github.io",
   "site_url": "https://swift-library.github.io/",
   "organization_logo": "https://raw.githubusercontent.com/swift-library/.github/master/Documentation/Assets/Logo.svg",
-  "navigation": {"documentation": "swift-library.github.io", "standards": ".github"},
   "groups": [
     {
       "id": "ship-and-maintain-packages",
@@ -13,7 +12,9 @@
         {"repository": "swift-semver", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-benchmark", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "docc", "targets": "library-products"}, "install": "swift-package"},
         {"repository": "swift-gyb", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "swift-package"},
-        {"repository": "swift-package-template", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"}
+        {"repository": "swift-package-template", "logo_path": "Documentation/Assets/Logo.svg", "documentation": {"kind": "readme"}, "install": "git"},
+        {"repository": "github-workflows", "logo_url": "https://raw.githubusercontent.com/swift-library/.github/HEAD/Documentation/Assets/Logo.png", "documentation": {"kind": "readme"}, "install": "git"},
+        {"repository": "swift-library.github.io", "logo_url": "https://raw.githubusercontent.com/swift-library/.github/HEAD/Documentation/Assets/Logo.png", "documentation": {"kind": "readme"}, "install": "git"}
       ]
     },
     {

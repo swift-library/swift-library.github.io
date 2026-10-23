@@ -8,7 +8,7 @@ Read `README.md` for the site's purpose, build, preview, and validation commands
   descriptions, versions, releases, and public membership.
 - `templates/` and `assets/` own website presentation. The organization
   `DESIGN.md` owns shared visual decisions and the icon source.
-- `Scripts/` owns the pipeline and checks; `Tests/` owns their regression tests.
+- `scripts/` owns the pipeline and checks; `Tests/` owns their regression tests.
 - Package APIs and DocC source belong to their package repositories. Build-time
   presentation transforms must preserve those sources and their manifests.
 

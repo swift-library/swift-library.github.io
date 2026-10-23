@@ -7,7 +7,7 @@ import re
 import unittest
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / '.github/workflows'
-loader = SourceFileLoader('workflow_checks', str(WORKFLOWS.parents[1] / 'Scripts/check-workflows'))
+loader = SourceFileLoader('workflow_checks', str(WORKFLOWS.parents[1] / 'scripts/check-workflows'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 checks = importlib.util.module_from_spec(spec)
 loader.exec_module(checks)
@@ -35,7 +35,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIsNotNone(version)
         self.assertGreaterEqual(tuple(map(int, version.groups())), (1, 25, 0))
         self.assertLess(lint.index('uses: actions/setup-go@'), lint.index('go install'))
-        self.assertIn('run: Scripts/check-workflows', lint)
+        self.assertIn('run: scripts/check-workflows', lint)
         self.assertNotIn('go install', build)
         self.assertIn('runs-on: macos-26', build)
 
@@ -43,6 +43,10 @@ class WorkflowTests(unittest.TestCase):
         text = (WORKFLOWS / 'source-policy.yml').read_text()
         self.assertIn('types: [opened, synchronize, reopened, edited]', text)
         self.assertIn('  policy:', text)
+        self.assertRegex(text, r'uses: swift-library/github-workflows/\.github/workflows/policy\.yml@[0-9a-f]{40}')
+        self.assertIn('      allow-terms: |\n        Codex\n        Cursor', text)
+        self.assertEqual(text.count('contents: read'), 2)
+        self.assertNotIn(': write', text)
         self.assertIn('cancel-in-progress: true', text)
 
     def test_publication_uses_only_the_completed_master_validation_artifact(self):

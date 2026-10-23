@@ -36,7 +36,7 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           echo "$GOBIN" >> "$GITHUB_PATH"
       - name: Check workflow schemas
-        run: Scripts/check-workflows
+        run: scripts/check-workflows
 
   build:
     runs-on: macos-26
@@ -58,11 +58,11 @@ jobs:
       - name: Build site
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: Scripts/build-site
+        run: scripts/build-site
       - name: Check site
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: Scripts/check-site
+        run: scripts/check-site
       - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

@@ -9,13 +9,13 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-SCRIPTS = Path(__file__).resolve().parent.parent / "Scripts"
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from site_checks import Links
 from site_docc import normalize_extension_hierarchy
-from site_support import contributor_names, latest_release, profile_presentation, SiteError
+from site_support import contributor_names, latest_release, profile_presentation, load_presentation, SiteError
 
 loader = importlib.machinery.SourceFileLoader("build_site", str(SCRIPTS / "build-site"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -253,19 +253,20 @@ class InputTests(unittest.TestCase):
 
 class PresentationTests(unittest.TestCase):
     def inputs(self):
-        profile = {"organization": "example", "promise": {
-            "heading": "Packages for apps.", "description": "Packages for apps.",
-            "secondary": "Choose the APIs your app needs."},
-            "navigation": {"documentation": "example.github.io", "standards": ".github"},
+        profile = {"organization": {"login": "example", "name": "Example", "about": "Packages"},
+            "promise": "Packages for apps.", "description": "Packages for apps.",
+            "secondary": "Choose the APIs your app needs.",
+            "navigation": {name: {"label": name.title(), "url": f"https://example.org/{name}/"}
+                           for name in ("documentation", "contributing", "security", "support")},
             "groups": [{"title": "Build apps", "repositories": [{"name": "model"}, {"name": "view"}]}]}
-        config = {"organization": "example", "navigation": dict(profile["navigation"]),
+        config = {"organization": "example",
                   "groups": [{"id": "build-apps", "name": "Build apps",
                               "projects": [{"repository": "model"}, {"repository": "view"}]}]}
         return config, profile
 
     def test_heading_and_description_must_publish_the_same_promise(self):
         config, profile = self.inputs()
-        profile["promise"]["description"] = "Another promise."
+        profile["description"] = "Another promise."
         with self.assertRaisesRegex(SiteError, "same promise"):
             profile_presentation(config, profile)
 
@@ -275,12 +276,48 @@ class PresentationTests(unittest.TestCase):
         with self.assertRaisesRegex(SiteError, "groups and order"):
             profile_presentation(config, profile)
 
-    def test_navigation_repositories_cannot_also_have_catalog_cards(self):
+    def test_shared_catalog_supplies_flat_promise_and_navigation(self):
         config, profile = self.inputs()
-        config["navigation"]["standards"] = "model"
-        profile["navigation"]["standards"] = "model"
-        with self.assertRaisesRegex(SiteError, "one catalog or navigation role"):
+        profile["navigation"]["documentation"]["url"] = "https://github.com/example/model"
+        presentation = profile_presentation(config, profile)
+        self.assertEqual(presentation, {key: profile[key] for key in
+                                      ("promise", "secondary", "description", "navigation")})
+
+    def test_organization_login_must_match(self):
+        config, profile = self.inputs()
+        profile["organization"]["login"] = "other"
+        with self.assertRaisesRegex(SiteError, "Organization login"):
             profile_presentation(config, profile)
+
+    def test_promise_fields_must_be_nonempty_strings(self):
+        for key in ("promise", "secondary", "description"):
+            for value in (None, "", " ", {}):
+                with self.subTest(key=key, value=value):
+                    config, profile = self.inputs()
+                    profile[key] = value
+                    with self.assertRaisesRegex(SiteError, "needs promise"):
+                        profile_presentation(config, profile)
+
+    def test_navigation_needs_all_four_labeled_https_links(self):
+        for value in ({}, {"url": "https://example.org"}, {"label": "Docs", "url": "/"},
+                      {"label": "Docs", "url": "javascript:alert(1)"}):
+            with self.subTest(value=value):
+                config, profile = self.inputs()
+                profile["navigation"]["documentation"] = value
+                with self.assertRaisesRegex(SiteError, "navigation links"):
+                    profile_presentation(config, profile)
+        config, profile = self.inputs()
+        del profile["navigation"]["support"]
+        with self.assertRaisesRegex(SiteError, "navigation needs"):
+            profile_presentation(config, profile)
+
+    def test_catalog_loads_from_the_organization_default_branch(self):
+        config, profile = self.inputs()
+        api = Mock()
+        api.text_file.return_value = json.dumps(profile)
+        self.assertEqual(load_presentation(config, api, {".github": {"default_branch": "main"}}),
+                         profile_presentation(config, profile))
+        api.text_file.assert_called_once_with("example", ".github", "profile/catalog.json", "main")
 
 
 if __name__ == "__main__":
