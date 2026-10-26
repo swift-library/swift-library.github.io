@@ -4,3 +4,7 @@ _site/
 __pycache__/
 *.pyc
 .DS_Store
+/.agent/*
+!/.agent/instructions/
+!/.agent/agents.json
+!/.agent/agents.resolved
